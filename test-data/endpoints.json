@@ -1,0 +1,11 @@
+{
+  "authentication": {
+    "login": "/api/auth/login",
+    "register": "/api/auth/register",
+    "logout": "/api/auth/logout",
+    "password_reset": "/api/auth/password-reset"
+  },
+  "profile": {
+    "current_user": "/api/users/me"
+  }
+}

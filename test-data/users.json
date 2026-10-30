@@ -1,0 +1,15 @@
+{
+  "valid_user": {
+    "username": "demo_user",
+    "password": "DemoPass123!"
+  },
+  "invalid_password_user": {
+    "username": "demo_user",
+    "password": "wrong-password"
+  },
+  "new_user": {
+    "username": "new_demo_user",
+    "email": "new@example.test",
+    "password": "DemoPass123!"
+  }
+}
