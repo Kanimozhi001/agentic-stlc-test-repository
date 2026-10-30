@@ -9,7 +9,7 @@ Scenario: Request a password reset
   When method post
   Then status 202
 
-Scenario: Password reset rejects an invalid email format
+Scenario: Passwords reset rejects an invalid email format
   Given request { email: 'not-an-email' }
   When method post
   Then status 400
