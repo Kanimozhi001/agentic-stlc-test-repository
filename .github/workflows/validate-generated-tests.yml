@@ -9,6 +9,7 @@ on:
       - "pom.xml"
       - "requirements-test.txt"
       - "pytest.ini"
+      - "conftest.py"
       - "src/test/**"
       - ".github/workflows/validate-generated-tests.yml"
 

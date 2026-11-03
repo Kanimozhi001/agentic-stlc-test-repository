@@ -3,11 +3,18 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 HOST = "127.0.0.1"
 PORT = 3000
 TOKEN = "demo-token"
+PRODUCTS = [
+    {"id": "P-101", "name": "Laptop Pro 14"},
+    {"id": "P-102", "name": "Laptop Air 13"},
+    {"id": "P-201", "name": "Phone Max"},
+    {"id": "P-202", "name": "Phone Mini"},
+    {"id": "P-301", "name": "Tablet Plus"},
+]
 
 PAGE = """<!doctype html>
 <html lang="en">
@@ -102,6 +109,43 @@ if (path === "/login") {
     });
     window.location.href = "/login";
   });
+} else if (path === "/") {
+  app.innerHTML = `<h1>Product Search (Demo)</h1>
+    <form id="searchForm">
+      <label for="search">Product name</label>
+      <input id="search" name="search" autocomplete="off">
+      <button id="searchBtn" type="submit">Search</button>
+    </form>
+    <p class="search-validation" role="alert" hidden>Please enter a product name</p>
+    <p class="no-results" hidden>No products found</p>
+    <div class="search-results" aria-live="polite"></div>`;
+  const form = app.querySelector("#searchForm");
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const query = app.querySelector("[name='search']").value.trim();
+    const validation = app.querySelector(".search-validation");
+    const noResults = app.querySelector(".no-results");
+    const results = app.querySelector(".search-results");
+    validation.hidden = true;
+    noResults.hidden = true;
+    results.replaceChildren();
+    if (!query) {
+      validation.hidden = false;
+      return;
+    }
+    const response = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+    const data = await response.json();
+    if (Array.isArray(data) && data.length) {
+      for (const product of data) {
+        const item = document.createElement("div");
+        item.className = "product-item";
+        item.textContent = product.name;
+        results.appendChild(item);
+      }
+    } else {
+      noResults.hidden = false;
+    }
+  });
 } else {
   app.innerHTML = "<h1>QA demo application</h1>";
 }
@@ -128,7 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
             return
@@ -137,6 +182,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(401, {"error": "Unauthorized"})
             else:
                 self._send_json(200, {"username": "demo_user", "displayName": "Demo User"})
+            return
+        if path == "/api/products/search":
+            query = parse_qs(parsed.query).get("q", [""])[0].strip()
+            if not query:
+                self._send_json(400, {"error": "Search term is required"})
+                return
+            matches = [
+                product for product in PRODUCTS
+                if query.casefold() in product["name"].casefold()
+            ]
+            self._send_json(200, matches or {"message": "No products found"})
             return
         if path == "/" or path in {
             "/login", "/register", "/forgot-password", "/profile", "/home"
