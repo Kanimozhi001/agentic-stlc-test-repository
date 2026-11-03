@@ -1,0 +1,178 @@
+name: Validate generated tests
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "mock_app.py"
+      - "pom.xml"
+      - "requirements-test.txt"
+      - "pytest.ini"
+      - "conftest.py"
+      - "src/test/**"
+      - ".github/workflows/validate-generated-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      ui_outcome: ${{ steps.ui-tests.outcome }}
+      ui_summary: ${{ steps.ui-summary.outputs.summary }}
+      karate_outcome: ${{ steps.karate-tests.outcome }}
+      karate_summary: ${{ steps.karate-summary.outputs.summary }}
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Start demo application
+        run: |
+          python mock_app.py > app.log 2>&1 &
+          echo $! > app.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat app.log
+          exit 1
+
+      - name: Run generated UI tests
+        id: ui-tests
+        continue-on-error: true
+        run: |
+          mkdir -p test-results
+          python -m pytest frontend -q --junitxml=test-results/ui-results.xml
+
+      - name: Summarize UI test results
+        id: ui-summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path("test-results/ui-results.xml")
+          if report.exists():
+              root = ET.parse(report).getroot()
+              suites = [root] if root.tag == "testsuite" else root.findall(".//testsuite")
+              total = sum(int(suite.get("tests", 0)) for suite in suites)
+              failed = sum(
+                  int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+                  for suite in suites
+              )
+              skipped = sum(int(suite.get("skipped", 0)) for suite in suites)
+              summary = f"{total - failed - skipped} passed, {failed} failed, {skipped} skipped"
+          else:
+              summary = "report unavailable"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"summary={summary}\n")
+          PY
+
+      - name: Run backend Karate tests
+        id: karate-tests
+        continue-on-error: true
+        run: mvn --batch-mode test
+
+      - name: Summarize Karate test results
+        id: karate-summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          reports = glob.glob("target/surefire-reports/TEST-*.xml")
+          if reports:
+              counts = [ET.parse(report).getroot().attrib for report in reports]
+              total = sum(int(item.get("tests", 0)) for item in counts)
+              failed = sum(int(item.get("failures", 0)) + int(item.get("errors", 0)) for item in counts)
+              skipped = sum(int(item.get("skipped", 0)) for item in counts)
+              summary = f"{total - failed - skipped} passed, {failed} failed, {skipped} skipped"
+          else:
+              summary = "report unavailable"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"summary={summary}\n")
+          PY
+
+      - name: Fail if any test suite failed
+        if: always()
+        env:
+          UI_OUTCOME: ${{ steps.ui-tests.outcome }}
+          KARATE_OUTCOME: ${{ steps.karate-tests.outcome }}
+        run: |
+          if [ "$UI_OUTCOME" != "success" ] || [ "$KARATE_OUTCOME" != "success" ]; then
+            echo "UI tests: ${UI_OUTCOME:-not run}; Karate tests: ${KARATE_OUTCOME:-not run}"
+            exit 1
+          fi
+
+  comment-results:
+    if: always() && github.event_name == 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Comment validation results on the PR
+        uses: actions/github-script@v7
+        env:
+          UI_OUTCOME: ${{ needs.validate.outputs.ui_outcome || needs.validate.result }}
+          KARATE_OUTCOME: ${{ needs.validate.outputs.karate_outcome || needs.validate.result }}
+          UI_SUMMARY: ${{ needs.validate.outputs.ui_summary || 'report unavailable' }}
+          KARATE_SUMMARY: ${{ needs.validate.outputs.karate_summary || 'report unavailable' }}
+        continue-on-error: true
+        with:
+          script: |
+            const marker = '<!-- generated-test-validation -->';
+            const ui = process.env.UI_OUTCOME || 'not run';
+            const karate = process.env.KARATE_OUTCOME || 'not run';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## Creator Agent test validation',
+              '',
+              `- **UI (pytest/Playwright):** ${ui} — ${process.env.UI_SUMMARY}`,
+              `- **API (Karate):** ${karate} — ${process.env.KARATE_SUMMARY}`,
+              `- **Workflow:** [View logs](${runUrl})`,
+              '',
+              'Review the generated scripts and these results before approving. This workflow does not approve or merge the PR.'
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100
+            });
+            const existing = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

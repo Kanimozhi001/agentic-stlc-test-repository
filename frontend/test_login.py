@@ -1,4 +1,5 @@
 import pytest
+from playwright.sync_api import expect
 
 @pytest.mark.login
 def test_user_can_login_with_valid_credentials(page):
@@ -7,7 +8,7 @@ def test_user_can_login_with_valid_credentials(page):
     page.fill("[name='password']", "DemoPass123!")
     page.click("button[type='submit']")
     page.wait_for_url("**/home")
-    assert page.url.endswith("/home")
+    expect(page).to_have_url("http://localhost:3000/home")
 
 @pytest.mark.login
 def test_invalid_password_shows_error(page):
@@ -15,4 +16,4 @@ def test_invalid_password_shows_error(page):
     page.fill("[name='username']", "demo_user")
     page.fill("[name='password']", "wrong-password")
     page.click("button[type='submit']")
-    assert page.locator("[role='alert']").is_visible()
+    expect(page.locator("[role='alert']")).to_be_visible()

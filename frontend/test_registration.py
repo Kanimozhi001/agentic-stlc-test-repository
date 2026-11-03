@@ -1,4 +1,5 @@
 import pytest
+from playwright.sync_api import expect
 
 @pytest.mark.registration
 def test_user_can_register(page):
@@ -7,7 +8,7 @@ def test_user_can_register(page):
     page.fill("[name='email']", "new@example.test")
     page.fill("[name='password']", "DemoPass123!")
     page.click("button[type='submit']")
-    assert page.get_by_text("Registration successful").is_visible()
+    expect(page.get_by_text("Registration successful")).to_be_visible()
 
 @pytest.mark.registration
 def test_registration_requires_email(page):
@@ -15,4 +16,4 @@ def test_registration_requires_email(page):
     page.fill("[name='username']", "new_demo_user")
     page.fill("[name='password']", "DemoPass123!")
     page.click("button[type='submit']")
-    assert page.locator("[name='email']").get_attribute("required") is not None
+    expect(page.locator("[name='email']")).to_have_attribute("required", "")

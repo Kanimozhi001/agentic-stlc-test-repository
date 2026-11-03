@@ -1,4 +1,3 @@
-```gherkin
 Feature: Search Products
   # ------------------------------------------------------------
   #  This feature validates the product search functionality.
@@ -23,14 +22,13 @@ Feature: Search Products
     Given param q = 'Laptop'
     When method get
     Then status 200
-    # Expect at least one product whose name contains the search term
-    And match response == '#[?(@.name contains "Laptop")]'
+    And match each response[*].name contains 'Laptop'
 
   Scenario: Search "Phone" – matching phones displayed
     Given param q = 'Phone'
     When method get
     Then status 200
-    And match response == '#[?(@.name contains "Phone")]'
+    And match each response[*].name contains 'Phone'
 
   # -----------------------------------------------------------------
   # Positive scenario – partial name match
@@ -61,4 +59,3 @@ Feature: Search Products
     Then status 400
     # Validation error returned by the API
     And match response == { error: 'Search term is required' }
-```

@@ -1,10 +1,12 @@
 import pytest
-from playwright.sync_api import sync_playwright, Page, expect
+import os
+import re
+from playwright.sync_api import Page, expect
 
 # ==============================
 # PLACEHOLDER CONFIGURATION
 # ==============================
-BASE_URL = "https://<YOUR_APPLICATION_URL>"  # TODO: replace with actual application URL
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:3000")
 SEARCH_INPUT_SELECTOR = "css=input[name='search']"  # TODO: replace with actual selector for the search box
 SEARCH_BUTTON_SELECTOR = "css=button[id='searchBtn']"  # TODO: replace with actual selector for the search button (if any)
 RESULT_ITEMS_SELECTOR = "css=.search-results .product-item"  # TODO: replace with selector that matches each product in the result list
@@ -12,28 +14,6 @@ NO_RESULTS_MESSAGE_SELECTOR = "css=.no-results"  # TODO: replace with selector t
 NO_RESULTS_TEXT = "No products found"  # TODO: verify exact text shown by the application
 EMPTY_INPUT_VALIDATION_SELECTOR = "css=.search-validation"  # TODO: replace with selector for empty‑input validation message
 EMPTY_INPUT_VALIDATION_TEXT = "Please enter a product name"  # TODO: verify exact validation message
-
-
-# ==============================
-# Pytest fixtures
-# ==============================
-@pytest.fixture(scope="session")
-def playwright_context():
-    """Start Playwright and create a browser context for the whole test session."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)  # Set headless=False for debugging
-        context = browser.new_context()
-        yield context
-        context.close()
-        browser.close()
-
-
-@pytest.fixture
-def page(playwright_context) -> Page:
-    """Create a new page for each test."""
-    page = playwright_context.new_page()
-    yield page
-    page.close()
 
 
 # ==============================
@@ -60,10 +40,9 @@ def perform_search(page: Page, query: str):
 def assert_results_contain(page: Page, expected_substring: str):
     """Assert that at least one result item contains the expected substring."""
     results = page.locator(RESULT_ITEMS_SELECTOR)
-    expect(results).to_have_count_greater_than(0)
-    # Verify that at least one result includes the expected text (case‑insensitive)
-    matching = results.filter(has_text=expected_substring, ignore_case=True)
-    expect(matching).to_have_count_greater_than(0)
+    expect(results.first).to_be_visible()
+    matching = results.filter(has_text=re.compile(re.escape(expected_substring), re.IGNORECASE))
+    expect(matching.first).to_be_visible()
 
 
 def assert_no_results_message(page: Page):
