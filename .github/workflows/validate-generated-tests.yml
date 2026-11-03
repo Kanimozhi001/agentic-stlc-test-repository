@@ -76,10 +76,14 @@ jobs:
 
           report = Path("test-results/ui-results.xml")
           if report.exists():
-              counts = ET.parse(report).getroot().attrib
-              total = int(counts.get("tests", 0))
-              failed = int(counts.get("failures", 0)) + int(counts.get("errors", 0))
-              skipped = int(counts.get("skipped", 0))
+              root = ET.parse(report).getroot()
+              suites = [root] if root.tag == "testsuite" else root.findall(".//testsuite")
+              total = sum(int(suite.get("tests", 0)) for suite in suites)
+              failed = sum(
+                  int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+                  for suite in suites
+              )
+              skipped = sum(int(suite.get("skipped", 0)) for suite in suites)
               summary = f"{total - failed - skipped} passed, {failed} failed, {skipped} skipped"
           else:
               summary = "report unavailable"
