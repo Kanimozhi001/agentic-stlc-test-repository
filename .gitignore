@@ -5,3 +5,6 @@ venv/
 .env
 playwright-report/
 test-results/
+target/
+app.log
+app.pid
